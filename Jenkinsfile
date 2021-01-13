@@ -48,84 +48,84 @@ pipeline {
       }
     }
     
-    stage('Docker GPU Build') {
-      // A GPU is not required to build this image. However, in our current setup,
-      // the default runtime is set to nvidia (as opposed to runc) and there
-      // is no option to specify a runtime for the `docker build` command.
-      //
-      // TODO(rosbo) don't set `nvidia` as the default runtime and use the
-      // `--runtime=nvidia` flag for the `docker run` command when GPU support is needed.
-      agent { label 'ephemeral-linux-gpu' }
-      options {
-        timeout(time: 60, unit: 'MINUTES')
-      }
-      steps {
-        sh '''#!/bin/bash
-          set -exo pipefail
-          # Remove images (dangling or not) created more than 120h (5 days ago) to prevent disk from filling up.
-          docker image prune --all --force --filter "until=120h" --filter "label=kaggle-lang=python"
-          # Remove any dangling images (no tags).
-          # All builds for the same branch uses the same tag. This means a subsequent build for the same branch
-          # will untag the previously built image which is safe to do. Builds for a single branch are performed
-          # serially.
-          docker image prune -f
-          ./build --gpu --base-image-tag ${PRETEST_TAG} | ts
-          ./push --gpu ${PRETEST_TAG}
-        '''
-      }
-    }
+    // stage('Docker GPU Build') {
+    //   // A GPU is not required to build this image. However, in our current setup,
+    //   // the default runtime is set to nvidia (as opposed to runc) and there
+    //   // is no option to specify a runtime for the `docker build` command.
+    //   //
+    //   // TODO(rosbo) don't set `nvidia` as the default runtime and use the
+    //   // `--runtime=nvidia` flag for the `docker run` command when GPU support is needed.
+    //   agent { label 'ephemeral-linux-gpu' }
+    //   options {
+    //     timeout(time: 60, unit: 'MINUTES')
+    //   }
+    //   steps {
+    //     sh '''#!/bin/bash
+    //       set -exo pipefail
+    //       # Remove images (dangling or not) created more than 120h (5 days ago) to prevent disk from filling up.
+    //       docker image prune --all --force --filter "until=120h" --filter "label=kaggle-lang=python"
+    //       # Remove any dangling images (no tags).
+    //       # All builds for the same branch uses the same tag. This means a subsequent build for the same branch
+    //       # will untag the previously built image which is safe to do. Builds for a single branch are performed
+    //       # serially.
+    //       docker image prune -f
+    //       ./build --gpu --base-image-tag ${PRETEST_TAG} | ts
+    //       ./push --gpu ${PRETEST_TAG}
+    //     '''
+    //   }
+    // }
 
-    stage('Test GPU Image') {
-      agent { label 'ephemeral-linux-gpu' }
-      options {
-        timeout(time: 20, unit: 'MINUTES')
-      }
-      steps {
-        sh '''#!/bin/bash
-          set -exo pipefail
+    // stage('Test GPU Image') {
+    //   agent { label 'ephemeral-linux-gpu' }
+    //   options {
+    //     timeout(time: 20, unit: 'MINUTES')
+    //   }
+    //   steps {
+    //     sh '''#!/bin/bash
+    //       set -exo pipefail
 
-          date
-          ./test --gpu --image gcr.io/kaggle-private-byod/python:${PRETEST_TAG}
-        '''
-      }
-    }
+    //       date
+    //       ./test --gpu --image gcr.io/kaggle-private-byod/python:${PRETEST_TAG}
+    //     '''
+    //   }
+    // }
 
-    stage('Package Versions') {
-      parallel {
-        stage('CPU Diff') {
-          steps {
-            sh '''#!/bin/bash
-            set -exo pipefail
+    // stage('Package Versions') {
+    //   parallel {
+    //     stage('CPU Diff') {
+    //       steps {
+    //         sh '''#!/bin/bash
+    //         set -exo pipefail
 
-            docker pull gcr.io/kaggle-images/python:${PRETEST_TAG}
-            ./diff --target gcr.io/kaggle-images/python:${PRETEST_TAG}
-          '''
-          }
-        }
-        stage('GPU Diff') {
-          agent { label 'ephemeral-linux-gpu' }
-          steps {
-            sh '''#!/bin/bash
-            set -exo pipefail
+    //         docker pull gcr.io/kaggle-images/python:${PRETEST_TAG}
+    //         ./diff --target gcr.io/kaggle-images/python:${PRETEST_TAG}
+    //       '''
+    //       }
+    //     }
+    //     stage('GPU Diff') {
+    //       agent { label 'ephemeral-linux-gpu' }
+    //       steps {
+    //         sh '''#!/bin/bash
+    //         set -exo pipefail
 
-            docker pull gcr.io/kaggle-private-byod/python:${PRETEST_TAG}
-            ./diff --gpu --target gcr.io/kaggle-private-byod/python:${PRETEST_TAG}
-          '''
-          }
-        }
-      }
-    }
+    //         docker pull gcr.io/kaggle-private-byod/python:${PRETEST_TAG}
+    //         ./diff --gpu --target gcr.io/kaggle-private-byod/python:${PRETEST_TAG}
+    //       '''
+    //       }
+    //     }
+    //   }
+    // }
 
-    stage('Label CPU/GPU Staging Images') {
-      steps {
-        sh '''#!/bin/bash
-          set -exo pipefail
+    // stage('Label CPU/GPU Staging Images') {
+    //   steps {
+    //     sh '''#!/bin/bash
+    //       set -exo pipefail
 
-          gcloud container images add-tag gcr.io/kaggle-images/python:${PRETEST_TAG} gcr.io/kaggle-images/python:${STAGING_TAG}
-          gcloud container images add-tag gcr.io/kaggle-private-byod/python:${PRETEST_TAG} gcr.io/kaggle-private-byod/python:${STAGING_TAG}
-        '''
-      }
-    }
+    //       gcloud container images add-tag gcr.io/kaggle-images/python:${PRETEST_TAG} gcr.io/kaggle-images/python:${STAGING_TAG}
+    //       gcloud container images add-tag gcr.io/kaggle-private-byod/python:${PRETEST_TAG} gcr.io/kaggle-private-byod/python:${STAGING_TAG}
+    //     '''
+    //   }
+    // }
   }
 
   post {

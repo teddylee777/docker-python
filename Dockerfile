@@ -1,8 +1,7 @@
 ARG BASE_TAG=m61
 ARG TENSORFLOW_VERSION=2.4.0
 
-FROM gcr.io/kaggle-images/python-tensorflow-whl:${TENSORFLOW_VERSION}-py37-2 as tensorflow_whl
-FROM gcr.io/deeplearning-platform-release/base-cpu:${BASE_TAG}
+FROM gcr.io/deeplearning-platform-release/tf2-cpu.2-3:${BASE_TAG}
 
 ADD clean-layer.sh  /tmp/clean-layer.sh
 ADD patches/nbconvert-extensions.tpl /opt/kaggle/nbconvert-extensions.tpl
@@ -53,22 +52,15 @@ RUN pip install seaborn python-dateutil dask && \
     pip install -f https://h2o-release.s3.amazonaws.com/h2o/latest_stable_Py.html h2o && \
     /tmp/clean-layer.sh
 
-# Install tensorflow from a pre-built wheel
-COPY --from=tensorflow_whl /tmp/tensorflow_cpu/*.whl /tmp/tensorflow_cpu/
-RUN pip install /tmp/tensorflow_cpu/tensorflow*.whl && \
-    rm -rf /tmp/tensorflow_cpu && \
-    /tmp/clean-layer.sh
-
-# Install tensorflow-gcs-config from a pre-built wheel
-COPY --from=tensorflow_whl /tmp/tensorflow_gcs_config/*.whl /tmp/tensorflow_gcs_config/
-RUN pip install /tmp/tensorflow_gcs_config/tensorflow*.whl && \
-    rm -rf /tmp/tensorflow_gcs_config && \
-    /tmp/clean-layer.sh
-
-# Install TensorFlow addons (TFA).
-COPY --from=tensorflow_whl /tmp/tfa_cpu/*.whl /tmp/tfa_cpu/
-RUN pip install /tmp/tfa_cpu/tensorflow*.whl && \
-    rm -rf /tmp/tfa_cpu/ && \
+RUN pip install tensorflow-addons==0.12.0 && \
+    pip install tensorflow-gcs-config==2.4.0 && \
+    # b/167268016 tensorforce 0.6.6 has an explicit dependency on tensorflow 2.3.1 which is causing a downgrade.
+    pip install tensorforce==0.5.5 && \
+    # The version of tensorflow-cloud included in the base image is outdated.
+    pip install --upgrade tensorflow-cloud && \
+    pip install tensorpack && \
+    pip install tensorflow-hub && \
+    pip install tensorflow-datasets && \
     /tmp/clean-layer.sh
 
 RUN apt-get install -y libfreetype6-dev && \
@@ -230,9 +222,8 @@ RUN pip install mpld3 && \
     pip install kaggle && \
     /tmp/clean-layer.sh
 
-RUN pip install tensorpack && \   
-    # Add google PAIR-code Facets
-    cd /opt/ && git clone https://github.com/PAIR-code/facets && cd facets/ && jupyter nbextension install facets-dist/ --user && \
+# Add google PAIR-code Facets
+RUN cd /opt/ && git clone https://github.com/PAIR-code/facets && cd facets/ && jupyter nbextension install facets-dist/ --user && \
     export PYTHONPATH=$PYTHONPATH:/opt/facets/facets_overview/python/ && \
     pip install pycountry && \
     pip install iso3166 && \
@@ -369,11 +360,8 @@ RUN pip install flashtext && \
     pip install shap && \
     pip install ray && \
     pip install gym && \
-    # b/167268016 tensorforce 0.6.6 has an explicit dependency on tensorflow 2.3.1 which is causing a downgrade.
-    pip install tensorforce==0.5.5 && \
     pip install pyarabic && \
     pip install pandasql && \
-    pip install tensorflow_hub && \
     pip install jieba  && \
     pip install git+https://github.com/SauceCat/PDPbox && \
     # ggplot is broken and main repo does not merge and release https://github.com/yhat/ggpy/pull/668
@@ -404,8 +392,6 @@ RUN pip install flashtext && \
     # papermill can replace nbconvert for executing notebooks
     pip install papermill && \
     pip install cloud-tpu-client && \
-    pip install tensorflow-cloud && \
-    pip install tensorflow-datasets && \
     pip install pydub && \
     pip install pydegensac && \
     pip install pytorch-lightning && \
