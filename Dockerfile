@@ -40,7 +40,7 @@ RUN conda config --add channels conda-forge && \
     conda config --add channels pytorch && \
     conda config --add channels rapidsai && \
     # ^ rapidsai is the highest priority channel, default lowest, conda-forge 2nd lowest.
-    conda install basemap cartopy imagemagick pyproj pysal "pytorch==1.8.1" "torchvision==0.9.1" "torchaudio==0.8.1" "torchtext==0.9.1" cpuonly && \
+    conda install basemap cartopy imagemagick pyproj pysal "pytorch=1.8" "torchvision=0.9" "torchaudio=0.8" "torchtext=0.9" cpuonly && \
     /tmp/clean-layer.sh
 
 RUN pip install seaborn python-dateutil dask python-igraph && \
