@@ -40,11 +40,10 @@ RUN conda config --add channels conda-forge && \
     conda config --add channels pytorch && \
     conda config --add channels rapidsai && \
     # ^ rapidsai is the highest priority channel, default lowest, conda-forge 2nd lowest.
-    conda install matplotlib basemap cartopy python-igraph imagemagick pyproj pysal "pytorch==1.8.1" "torchvision==0.9.1" "torchaudio==0.8.1" "torchtext==0.9.1" cpuonly && \
+    conda install basemap cartopy imagemagick pyproj pysal "pytorch==1.8.1" "torchvision==0.9.1" "torchaudio==0.8.1" "torchtext==0.9.1" cpuonly && \
     /tmp/clean-layer.sh
 
-# The anaconda base image includes outdated versions of these packages. Update them to include the latest version.
-RUN pip install seaborn python-dateutil dask && \
+RUN pip install seaborn python-dateutil dask python-igraph && \
     pip install pyyaml joblib husl geopy ml_metrics mne pyshp && \
     pip install pandas && \
     # Install h2o from source.
