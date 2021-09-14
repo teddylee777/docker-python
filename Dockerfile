@@ -1,20 +1,18 @@
-ARG BASE_TAG=m66
+ARG BASE_TAG=m78
 ARG TENSORFLOW_VERSION=2.4.1
 
-FROM gcr.io/kaggle-images/python-tensorflow-whl:${TENSORFLOW_VERSION}-py37-2 as tensorflow_whl
 FROM gcr.io/deeplearning-platform-release/base-cpu:${BASE_TAG}
+
+# We need to redefine TENSORFLOW_VERSION here to get the default ARG value defined above the FROM instruction.
+# See: https://docs.docker.com/engine/reference/builder/#understand-how-arg-and-from-interact
+ARG TENSORFLOW_VERSION
 
 ADD clean-layer.sh  /tmp/clean-layer.sh
 ADD patches/nbconvert-extensions.tpl /opt/kaggle/nbconvert-extensions.tpl
 ADD patches/template_conf.json /opt/kaggle/conf.json
 
-# This is necessary for apt to access HTTPS sources
-RUN apt-get update && \
-    apt-get install apt-transport-https && \
-    /tmp/clean-layer.sh
-
-    # Use a fixed apt-get repo to stop intermittent failures due to flaky httpredir connections,
-    # as described by Lionel Chan at http://stackoverflow.com/a/37426929/5881346
+# Use a fixed apt-get repo to stop intermittent failures due to flaky httpredir connections,
+# as described by Lionel Chan at http://stackoverflow.com/a/37426929/5881346
 RUN sed -i "s/httpredir.debian.org/debian.uchicago.edu/" /etc/apt/sources.list && \
     apt-get update && \
     # Needed by vowpalwabbit & lightGBM (GPU build).
@@ -34,20 +32,18 @@ ENV PROJ_LIB=/opt/conda/share/proj
 # Install conda packages not available on pip.
 # When using pip in a conda environment, conda commands should be ran first and then
 # the remaining pip commands: https://www.anaconda.com/using-pip-in-a-conda-environment/
-# Using the same global consistent ordered list of channels
-RUN conda config --add channels conda-forge && \
-    conda config --add channels nvidia && \
-    conda config --add channels pytorch && \
+RUN conda config --add channels nvidia && \
     conda config --add channels rapidsai && \
-    # ^ rapidsai is the highest priority channel, default lowest, conda-forge 2nd lowest.
-    # b/182405233 pyproj 3.x is not compatible with basemap 1.2.1
-    # b/161473620#comment7 pin required to prevent resolver from picking pysal 1.x., pysal 2.2.x is also downloading data on import.
-    conda install matplotlib basemap cartopy python-igraph imagemagick "pyproj=2.6" "pysal==2.1.0" && \
-    conda install "pytorch=1.7" "torchvision=0.8" "torchaudio=0.7" "torchtext=0.8" cpuonly && \
+    # Base image channel order: conda-forge (highest priority), defaults.
+    # End state: rapidsai (highest priority), nvidia, conda-forge, defaults.
+    conda install mkl cartopy=0.19 imagemagick=7.1 pyproj==3.1.0 && \
     /tmp/clean-layer.sh
 
-# The anaconda base image includes outdated versions of these packages. Update them to include the latest version.
-RUN pip install seaborn python-dateutil dask && \
+RUN pip install torch==1.7.1+cpu torchvision==0.8.2+cpu torchaudio==0.7.2 torchtext==0.8.1 -f https://download.pytorch.org/whl/torch_stable.html && \
+    /tmp/clean-layer.sh
+
+RUN pip install pysal && \
+    pip install seaborn python-dateutil dask python-igraph && \
     pip install pyyaml joblib husl geopy ml_metrics mne pyshp && \
     pip install pandas && \
     # Install h2o from source.
@@ -56,34 +52,22 @@ RUN pip install seaborn python-dateutil dask && \
     pip install -f https://h2o-release.s3.amazonaws.com/h2o/latest_stable_Py.html h2o && \
     /tmp/clean-layer.sh
 
-# Install tensorflow from a pre-built wheel
-COPY --from=tensorflow_whl /tmp/tensorflow_cpu/*.whl /tmp/tensorflow_cpu/
-RUN pip install /tmp/tensorflow_cpu/tensorflow*.whl && \
-    rm -rf /tmp/tensorflow_cpu && \
-    /tmp/clean-layer.sh
-
-# Install tensorflow-gcs-config from a pre-built wheel
-COPY --from=tensorflow_whl /tmp/tensorflow_gcs_config/*.whl /tmp/tensorflow_gcs_config/
-RUN pip install /tmp/tensorflow_gcs_config/tensorflow*.whl && \
-    rm -rf /tmp/tensorflow_gcs_config && \
-    /tmp/clean-layer.sh
-
-# Install TensorFlow addons (TFA).
-COPY --from=tensorflow_whl /tmp/tfa_cpu/*.whl /tmp/tfa_cpu/
-RUN pip install /tmp/tfa_cpu/tensorflow*.whl && \
-    rm -rf /tmp/tfa_cpu/ && \
+RUN pip install tensorflow==${TENSORFLOW_VERSION} && \
+    pip install tensorflow-gcs-config==2.4.0 && \
+    pip install tensorflow-addons==0.12.1 && \
+    pip install tensorflow_probability==0.12.2 && \
     /tmp/clean-layer.sh
 
 RUN apt-get install -y libfreetype6-dev && \
     apt-get install -y libglib2.0-0 libxext6 libsm6 libxrender1 libfontconfig1 --fix-missing && \
-    pip install gensim && \
+    # b/198300835 kornia 4.1.0 is not compatible with our version of numpy.
+    pip install gensim==4.0.1 && \
     pip install textblob && \
     pip install wordcloud && \
     pip install xgboost && \
     # Pinned to match GPU version. Update version together.
-    pip install lightgbm==3.2.0 && \
+    pip install lightgbm==3.2.1 && \
     pip install pydot && \
-    pip install keras && \
     pip install keras-tuner && \
     pip install flake8 && \
     # Pinned because it breaks theano test with the latest version (b/178107003).
@@ -184,7 +168,8 @@ RUN pip install mpld3 && \
     pip install s2sphere && \
     pip install bayesian-optimization && \
     pip install matplotlib-venn && \
-    pip install pyldavis && \
+    # b/184083722 pyldavis >= 3.3 requires numpy >= 1.20.0 but TensorFlow 2.4.1 / 2.5.0 requires 1.19.2
+    pip install pyldavis==3.2.2 && \
     pip install mlxtend && \
     pip install altair && \
     # b/183944405 pystan 3.x is not compatible with fbprophet.
@@ -192,9 +177,6 @@ RUN pip install mpld3 && \
     pip install ImageHash && \
     pip install ecos && \
     pip install CVXcanon && \
-    # b/179264579 cvxpy 1.1.8 requires numpy >= 1.20
-    pip install cvxpy==1.1.7 && \
-    pip install fancyimpute && \
     pip install pymc3 && \
     pip install imagecodecs && \
     pip install tifffile && \
@@ -260,10 +242,6 @@ RUN pip install tensorpack && \
 RUN pip install --upgrade cython && \
     pip install --upgrade cysignals && \
     pip install pyfasttext && \
-    # ktext has an explicit dependency on Keras 2.2.4 which is not
-    # compatible with TensorFlow 2.0 (support was added in Keras 2.3.0).
-    # Add the package back once it is fixed upstream.
-    # pip install ktext && \
     pip install fasttext && \
     apt-get install -y libhunspell-dev && pip install hunspell && \
     pip install annoy && \
@@ -320,7 +298,8 @@ RUN pip install bleach && \
     pip install notebook && \
     pip install papermill && \
     pip install olefile && \
-    pip install kornia && \
+    # b/198300835 kornia 0.5.10 is not compatible with our version of numpy.
+    pip install kornia==0.5.8 && \
     pip install pandas_summary && \
     pip install pandocfilters && \
     pip install pexpect && \
@@ -387,11 +366,6 @@ RUN pip install flashtext && \
     pip install https://github.com/hbasria/ggpy/archive/0.11.5.zip && \
     pip install cesium && \
     pip install rgf_python && \
-    # b/185992410: onnx is a dependency of pytext, but the version 1.9.0 breaks pytext test.
-    # Remove this installation when pytext fixes the problem.
-    pip install onnx==1.8.1 && \
-    # b/145404107: latest version force specific version of numpy and torch.
-    pip install pytext-nlp==0.1.2 && \
     pip install tsfresh && \
     pip install pykalman && \
     pip install optuna && \
@@ -417,7 +391,9 @@ RUN pip install flashtext && \
     pip install tensorflow-datasets && \
     pip install pydub && \
     pip install pydegensac && \
-    pip install pytorch-lightning && \
+    # b/198635596 latest versions of torchmetrics & pytorch-lightning are failing at runtime.
+    pip install torchmetrics==0.5.0 && \
+    pip install pytorch-lightning==1.4.4 && \
     pip install datatable && \
     pip install sympy && \
     # flask is used by agents in the simulation competitions.
@@ -426,7 +402,7 @@ RUN pip install flashtext && \
     pip install pycrypto && \
     pip install easyocr && \
     # Keep JAX version in sync with GPU image.
-    pip install jax==0.2.12 jaxlib==0.1.64 && \
+    pip install jax[cpu]==0.2.19 && \
     # ipympl adds interactive widget support for matplotlib
     pip install ipympl==0.7.0 && \
     pip install pandarallel && \
@@ -462,7 +438,7 @@ ENV PYTHONPATH=$PYTHONPATH:/opt/facets/facets_overview/python/
 ENV MKL_THREADING_LAYER=GNU
 
 # Temporary fixes and patches
-    # Temporary patch for Dask getting downgraded, which breaks Keras
+# Temporary patch for Dask getting downgraded, which breaks Keras
 RUN pip install --upgrade dask && \
     # Stop jupyter nbconvert trying to rewrite its folder hierarchy
     mkdir -p /root/.jupyter && touch /root/.jupyter/jupyter_nbconvert_config.py && touch /root/.jupyter/migrated && \
@@ -512,9 +488,6 @@ RUN jupyter-nbextension disable nb_conda --py --sys-prefix && \
 # Set backend for matplotlib
 ENV MPLBACKEND "agg"
 
-# We need to redefine TENSORFLOW_VERSION here to get the default ARG value defined above the FROM instruction.
-# See: https://docs.docker.com/engine/reference/builder/#understand-how-arg-and-from-interact
-ARG TENSORFLOW_VERSION
 ARG GIT_COMMIT=unknown
 ARG BUILD_DATE=unknown
 
